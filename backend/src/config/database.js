@@ -30,10 +30,127 @@ const connectDB = async () => {
 };
 
 const createTables = async () => {
-  console.log('Database tables are managed by database.sql');
+  console.log('Creating/verifying database tables...');
+
+  // Core tables (CREATE IF NOT EXISTS — safe to run on fresh DB)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        phone_number VARCHAR(20) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(20) NOT NULL CHECK (role IN ('fisherman', 'volunteer', 'admin')),
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS alerts (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('border', 'warning', 'tidal', 'weather')),
+        severity VARCHAR(20) NOT NULL CHECK (severity IN ('red', 'yellow', 'green')),
+        location VARCHAR(255),
+        latitude DECIMAL(10, 8),
+        longitude DECIMAL(11, 8),
+        is_active BOOLEAN DEFAULT true,
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerts_active ON alerts(is_active)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS incidents (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        incident_type VARCHAR(50),
+        location VARCHAR(255),
+        latitude DECIMAL(10, 8),
+        longitude DECIMAL(11, 8),
+        media_attachments JSONB DEFAULT '[]'::jsonb,
+        status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'investigating', 'resolved', 'closed')),
+        reported_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS social_feed (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        content TEXT NOT NULL,
+        image_url VARCHAR(500),
+        likes_count INTEGER DEFAULT 0,
+        comments_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_social_feed_user ON social_feed(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_social_feed_created ON social_feed(created_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS clusters (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        location VARCHAR(255),
+        latitude DECIMAL(10, 8),
+        longitude DECIMAL(11, 8),
+        radius_km FLOAT DEFAULT 50,
+        coordinator_id INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fishing_zones (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        zone_type VARCHAR(50),
+        coordinates TEXT,
+        is_restricted BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER UNIQUE REFERENCES users(id),
+        language VARCHAR(10) DEFAULT 'en',
+        volume INTEGER DEFAULT 50 CHECK (volume >= 0 AND volume <= 100),
+        brightness INTEGER DEFAULT 50 CHECK (brightness >= 0 AND brightness <= 100),
+        notifications_enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    console.log('✅  Core tables ready.');
+  } catch (err) {
+    console.warn('Core table creation error:', err.message);
+  }
 
   try {
-    // Add radius_km to clusters if it doesn't exist yet
+    // Add radius_km to clusters if it doesn't exist yet (for existing DBs)
     await pool.query(`
       ALTER TABLE clusters ADD COLUMN IF NOT EXISTS radius_km FLOAT DEFAULT 50
     `);
