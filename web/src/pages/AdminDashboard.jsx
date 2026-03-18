@@ -256,7 +256,7 @@ function AdminDashboard() {
   const renderIncidentAttachment = (attachment, index) => {
     const type = inferAttachmentType(attachment)
     const key = attachment.id || `${index}-${attachment.url}`
-    let url = attachment.url ? (attachment.url.startsWith('http') ? attachment.url : `http://localhost:5000${attachment.url}`) : null
+    let url = attachment.url ? (attachment.url.startsWith('http') ? attachment.url : `${import.meta.env.VITE_API_URL?.replace('/api','') || 'http://localhost:5000'}${attachment.url}`) : null
     const metadata = formatAttachmentMeta(attachment)
 
     if (!url) {
